@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pickleball Tournament Manager</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="container narrow">
+  <h1>🏓 Tournament Manager</h1>
+  <div class="subtitle">Register, run tournaments, track scores for your group</div>
+
+  <div class="tab-bar">
+    <button id="tab-login-btn" class="tab-btn active" onclick="switchTab('login')">Log in</button>
+    <button id="tab-register-btn" class="tab-btn" onclick="switchTab('register')">Register</button>
+  </div>
+
+  <div id="error" class="error-banner hidden"></div>
+
+  <!-- LOGIN -->
+  <div id="login-panel" class="section-card">
+    <h2>Organizer login</h2>
+    <label for="login-email">Email</label>
+    <input type="email" id="login-email" placeholder="you@example.com">
+    <label for="login-password">Password</label>
+    <input type="password" id="login-password" placeholder="••••••••">
+    <button class="full" onclick="doLogin()">Log in</button>
+  </div>
+
+  <!-- REGISTER -->
+  <div id="register-panel" class="section-card hidden">
+    <h2>Create an organizer account</h2>
+    <label for="reg-name">Your name</label>
+    <input type="text" id="reg-name" placeholder="Sanjay Gatti">
+    <label for="reg-email">Email</label>
+    <input type="email" id="reg-email" placeholder="you@example.com">
+    <label for="reg-password">Password</label>
+    <input type="password" id="reg-password" placeholder="At least 6 characters">
+    <button class="full" onclick="doRegister()">Create account</button>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+function switchTab(tab) {
+  document.getElementById('tab-login-btn').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register-btn').classList.toggle('active', tab === 'register');
+  document.getElementById('login-panel').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('register-panel').classList.toggle('hidden', tab !== 'register');
+  clearError(document.getElementById('error'));
+}
+
+async function doLogin() {
+  const errEl = document.getElementById('error');
+  clearError(errEl);
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  try {
+    await api('/auth/login', { method: 'POST', body: { email, password } });
+    window.location.href = '/dashboard.html';
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function doRegister() {
+  const errEl = document.getElementById('error');
+  clearError(errEl);
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  try {
+    await api('/auth/register', { method: 'POST', body: { name, email, password } });
+    window.location.href = '/dashboard.html';
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+// If already logged in, skip straight to the dashboard.
+(async () => {
+  try {
+    await api('/auth/me');
+    window.location.href = '/dashboard.html';
+  } catch (e) { /* not logged in, stay here */ }
+})();
+</script>
+</body>
+</html>

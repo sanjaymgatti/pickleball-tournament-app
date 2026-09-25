@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tournament</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <span class="brand">🏓 Tournament Manager</span>
+    <span class="crumb"><a href="/dashboard.html">All tournaments</a></span>
+  </div>
+
+  <h1 id="t-name">Loading…</h1>
+  <div class="subtitle" id="t-dates"></div>
+
+  <div id="error" class="error-banner hidden"></div>
+
+  <div class="section-card">
+    <h2>New category</h2>
+    <label for="c-name">Category name</label>
+    <input type="text" id="c-name" placeholder="e.g. Men's Doubles, Open Mixer">
+    <label for="c-type">Format</label>
+    <select id="c-type">
+      <option value="singles">Singles — round robin, one player per side</option>
+      <option value="doubles">Doubles — fixed teams, round robin between teams</option>
+      <option value="mixnmatch">MixNMatch — partners rotate every match</option>
+    </select>
+    <button class="full" onclick="createCategory()">Add category</button>
+  </div>
+
+  <div class="section-card">
+    <h2>Categories</h2>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+const tournamentId = qs('id');
+const errEl = document.getElementById('error');
+
+const TYPE_LABEL = { singles: 'Singles', doubles: 'Doubles', mixnmatch: 'MixNMatch' };
+
+async function init() {
+  const user = await requireLogin();
+  if (!user) return;
+  if (!tournamentId) { window.location.href = '/dashboard.html'; return; }
+  await loadTournament();
+  await loadCategories();
+}
+
+async function loadTournament() {
+  try {
+    const { tournament } = await api(`/tournaments/${tournamentId}`);
+    document.getElementById('t-name').textContent = tournament.name;
+    const dates = [tournament.start_date, tournament.end_date].filter(Boolean).join(' → ');
+    document.getElementById('t-dates').textContent = dates || tournament.description || '';
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function loadCategories() {
+  clearError(errEl);
+  try {
+    const { categories } = await api(`/tournaments/${tournamentId}/categories`);
+    const list = document.getElementById('list');
+    if (categories.length === 0) {
+      list.innerHTML = '<div class="empty-state">No categories yet. Add one above (e.g. "Doubles" or "MixNMatch").</div>';
+      return;
+    }
+    list.innerHTML = categories.map(c => `
+      <div class="list-item">
+        <div>
+          <div class="title">
+            <a href="/category.html?id=${c.id}">${escapeHtml(c.name)}</a>
+            <span class="tag ${c.type}">${TYPE_LABEL[c.type]}</span>
+          </div>
+        </div>
+        <button class="ghost" onclick="deleteCategory(${c.id})">Delete</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function createCategory() {
+  clearError(errEl);
+  const name = document.getElementById('c-name').value.trim();
+  const type = document.getElementById('c-type').value;
+  try {
+    await api(`/tournaments/${tournamentId}/categories`, { method: 'POST', body: { name, type } });
+    document.getElementById('c-name').value = '';
+    await loadCategories();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function deleteCategory(id) {
+  if (!confirm('Delete this category, its players/teams, and all matches?')) return;
+  try {
+    await api(`/categories/${id}`, { method: 'DELETE' });
+    await loadCategories();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+init();
+</script>
+</body>
+</html>

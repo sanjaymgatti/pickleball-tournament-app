@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Category</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <span class="brand">🏓 Tournament Manager</span>
+    <span class="crumb"><a href="/dashboard.html">All tournaments</a> · <a id="crumb-tournament" href="#">Tournament</a></span>
+  </div>
+
+  <h1 id="c-name">Loading…</h1>
+  <div class="subtitle" id="c-type"></div>
+
+  <div id="error" class="error-banner hidden"></div>
+
+  <!-- PLAYERS -->
+  <div class="section-card">
+    <h2>Players</h2>
+    <label for="p-names">Add players (one name per line)</label>
+    <textarea id="p-names" placeholder="Sanjay
+Prabhakar
+Amit
+Bala"></textarea>
+    <button class="full" onclick="addPlayers()">Add players</button>
+    <div id="player-list" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- TEAMS (doubles only) -->
+  <div id="teams-section" class="section-card hidden">
+    <h2>Fixed teams</h2>
+    <div class="row">
+      <div>
+        <label for="team-p1">Player 1</label>
+        <select id="team-p1"></select>
+      </div>
+      <div>
+        <label for="team-p2">Player 2</label>
+        <select id="team-p2"></select>
+      </div>
+    </div>
+    <button class="full secondary" onclick="createTeam()">Create team</button>
+    <div id="team-list" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- DRAWS -->
+  <div class="section-card">
+    <h2>Draws</h2>
+    <div id="rounds-field" class="hidden">
+      <label for="mix-rounds">Rounds to generate (MixNMatch, more than 4 players)</label>
+      <input type="number" id="mix-rounds" placeholder="Default: one round per player">
+      <div class="hint">Each round splits players across courts of 4 and rotates partners to keep things fair.</div>
+    </div>
+    <div class="button-row">
+      <button onclick="generateDraws()">Generate draws</button>
+      <button class="danger" onclick="resetMatches()">Reset matches</button>
+    </div>
+    <div id="matches-container" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div class="section-card">
+    <h2>📊 Leaderboard</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align:left;">Participant</th>
+          <th>W</th><th>L</th><th>PF</th><th>PA</th><th>Diff</th>
+        </tr>
+      </thead>
+      <tbody id="leaderboard"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+const categoryId = qs('id');
+const errEl = document.getElementById('error');
+let category = null;
+
+async function init() {
+  const user = await requireLogin();
+  if (!user) return;
+  if (!categoryId) { window.location.href = '/dashboard.html'; return; }
+
+  try {
+    const { category: c } = await api(`/categories/${categoryId}`);
+    category = c;
+  } catch (e) {
+    showError(errEl, e.message);
+    return;
+  }
+
+  document.getElementById('c-name').textContent = category.name;
+  document.getElementById('c-type').textContent = ({
+    singles: 'Singles — round robin',
+    doubles: 'Doubles — fixed teams, round robin',
+    mixnmatch: 'MixNMatch — rotating partners'
+  })[category.type];
+  document.getElementById('crumb-tournament').href = `/tournament.html?id=${category.tournament_id}`;
+
+  if (category.type === 'doubles') {
+    document.getElementById('teams-section').classList.remove('hidden');
+  }
+  if (category.type === 'mixnmatch') {
+    document.getElementById('rounds-field').classList.remove('hidden');
+  }
+
+  await refreshAll();
+}
+
+async function refreshAll() {
+  await loadPlayers();
+  if (category.type === 'doubles') await loadTeams();
+  await loadMatches();
+  await loadLeaderboard();
+}
+
+async function loadPlayers() {
+  const { players } = await api(`/categories/${categoryId}/players`);
+  const list = document.getElementById('player-list');
+  if (players.length === 0) {
+    list.innerHTML = '<div class="empty-state">No players yet.</div>';
+  } else {
+    list.innerHTML = players.map(p => `
+      <div class="list-item">
+        <span>${escapeHtml(p.name)}</span>
+        <button class="ghost" onclick="deletePlayer(${p.id})">Remove</button>
+      </div>
+    `).join('');
+  }
+
+  if (category.type === 'doubles') {
+    const opts = players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    document.getElementById('team-p1').innerHTML = opts;
+    document.getElementById('team-p2').innerHTML = opts;
+  }
+}
+
+async function loadTeams() {
+  const { teams } = await api(`/categories/${categoryId}/teams`);
+  const list = document.getElementById('team-list');
+  if (teams.length === 0) {
+    list.innerHTML = '<div class="empty-state">No teams yet. Pair up players above.</div>';
+  } else {
+    list.innerHTML = teams.map(t => `
+      <div class="list-item">
+        <span>${escapeHtml(t.name)}</span>
+        <button class="ghost" onclick="deleteTeam(${t.id})">Remove</button>
+      </div>
+    `).join('');
+  }
+}
+
+async function loadMatches() {
+  const { matches } = await api(`/categories/${categoryId}/matches`);
+  const container = document.getElementById('matches-container');
+  if (matches.length === 0) {
+    container.innerHTML = '<div class="empty-state">No draws generated yet.</div>';
+    return;
+  }
+  container.innerHTML = matches.map(m => `
+    <div class="match-card">
+      <div class="match-header">Round ${m.round}</div>
+      <div class="match-inputs">
+        <span class="team-label" style="text-align:right;">${escapeHtml(m.side1_label)}</span>
+        <input type="number" class="score-input" value="${m.score1 ?? ''}" onchange="updateScore(${m.id}, 'score1', this.value)">
+        <span class="vs">VS</span>
+        <input type="number" class="score-input" value="${m.score2 ?? ''}" onchange="updateScore(${m.id}, 'score2', this.value)">
+        <span class="team-label">${escapeHtml(m.side2_label)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadLeaderboard() {
+  const { leaderboard } = await api(`/categories/${categoryId}/leaderboard`);
+  const tbody = document.getElementById('leaderboard');
+  if (leaderboard.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No scores recorded yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = leaderboard.map(p => `
+    <tr>
+      <td class="player-name">${escapeHtml(p.name)}</td>
+      <td>${p.wins}</td>
+      <td>${p.losses}</td>
+      <td>${p.pf}</td>
+      <td>${p.pa}</td>
+      <td style="color:${p.diff > 0 ? '#22c55e' : p.diff < 0 ? '#ef4444' : 'inherit'}">${p.diff > 0 ? '+' + p.diff : p.diff}</td>
+    </tr>
+  `).join('');
+}
+
+async function addPlayers() {
+  clearError(errEl);
+  const raw = document.getElementById('p-names').value;
+  const names = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  if (names.length === 0) return;
+  try {
+    await api(`/categories/${categoryId}/players`, { method: 'POST', body: { names } });
+    document.getElementById('p-names').value = '';
+    await loadPlayers();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function deletePlayer(id) {
+  if (!confirm('Remove this player?')) return;
+  try {
+    await api(`/players/${id}`, { method: 'DELETE' });
+    await refreshAll();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function createTeam() {
+  clearError(errEl);
+  const player1_id = document.getElementById('team-p1').value;
+  const player2_id = document.getElementById('team-p2').value;
+  try {
+    await api(`/categories/${categoryId}/teams`, { method: 'POST', body: { player1_id, player2_id } });
+    await loadTeams();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function deleteTeam(id) {
+  if (!confirm('Remove this team?')) return;
+  try {
+    await api(`/teams/${id}`, { method: 'DELETE' });
+    await loadTeams();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function generateDraws() {
+  clearError(errEl);
+  const body = {};
+  if (category.type === 'mixnmatch') {
+    const rounds = document.getElementById('mix-rounds').value;
+    if (rounds) body.rounds = rounds;
+  }
+  try {
+    await api(`/categories/${categoryId}/generate-draws`, { method: 'POST', body });
+    await loadMatches();
+    await loadLeaderboard();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function resetMatches() {
+  if (!confirm('Clear all matches and scores for this category?')) return;
+  try {
+    await api(`/categories/${categoryId}/reset`, { method: 'POST' });
+    await loadMatches();
+    await loadLeaderboard();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function updateScore(matchId, field, value) {
+  try {
+    const body = {};
+    body[field] = value;
+    await api(`/matches/${matchId}`, { method: 'PUT', body });
+    await loadLeaderboard();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+init();
+</script>
+</body>
+</html>

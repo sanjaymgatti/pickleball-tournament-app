@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Tournaments</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <span class="brand">🏓 Tournament Manager</span>
+    <span class="crumb"><span id="who"></span> · <a href="#" onclick="logout()">Log out</a></span>
+  </div>
+
+  <h1>My Tournaments</h1>
+  <div class="subtitle">Create a tournament, then add categories and players inside it</div>
+
+  <div id="error" class="error-banner hidden"></div>
+
+  <div class="section-card">
+    <h2>New tournament</h2>
+    <label for="t-name">Name</label>
+    <input type="text" id="t-name" placeholder="e.g. Wednesday Wars — September">
+    <div class="row">
+      <div>
+        <label for="t-start">Start date</label>
+        <input type="date" id="t-start">
+      </div>
+      <div>
+        <label for="t-end">End date</label>
+        <input type="date" id="t-end">
+      </div>
+    </div>
+    <label for="t-desc">Description (optional)</label>
+    <textarea id="t-desc" style="height:70px" placeholder="Any notes for players"></textarea>
+    <button class="full" onclick="createTournament()">Create tournament</button>
+  </div>
+
+  <div class="section-card">
+    <h2>Your tournaments</h2>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+const errEl = document.getElementById('error');
+
+async function init() {
+  const user = await requireLogin();
+  if (!user) return;
+  document.getElementById('who').textContent = user.name;
+  await loadTournaments();
+}
+
+async function loadTournaments() {
+  clearError(errEl);
+  try {
+    const { tournaments } = await api('/tournaments');
+    const list = document.getElementById('list');
+    if (tournaments.length === 0) {
+      list.innerHTML = '<div class="empty-state">No tournaments yet. Create your first one above.</div>';
+      return;
+    }
+    list.innerHTML = tournaments.map(t => `
+      <div class="list-item">
+        <div>
+          <div class="title"><a href="/tournament.html?id=${t.id}">${escapeHtml(t.name)}</a></div>
+          <div class="meta">${t.start_date ? t.start_date : ''}${t.start_date && t.end_date ? ' → ' : ''}${t.end_date ? t.end_date : ''}</div>
+        </div>
+        <button class="ghost" onclick="deleteTournament(${t.id})">Delete</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function createTournament() {
+  clearError(errEl);
+  const name = document.getElementById('t-name').value.trim();
+  const start_date = document.getElementById('t-start').value;
+  const end_date = document.getElementById('t-end').value;
+  const description = document.getElementById('t-desc').value.trim();
+  try {
+    const { tournament } = await api('/tournaments', { method: 'POST', body: { name, start_date, end_date, description } });
+    window.location.href = `/tournament.html?id=${tournament.id}`;
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function deleteTournament(id) {
+  if (!confirm('Delete this tournament and everything in it? This cannot be undone.')) return;
+  try {
+    await api(`/tournaments/${id}`, { method: 'DELETE' });
+    await loadTournaments();
+  } catch (e) {
+    showError(errEl, e.message);
+  }
+}
+
+async function logout() {
+  await api('/auth/logout', { method: 'POST' });
+  window.location.href = '/index.html';
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+init();
+</script>
+</body>
+</html>
