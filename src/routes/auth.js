@@ -10,7 +10,7 @@ const router = express.Router();
 const COOKIE_OPTS = {
   httpOnly: true,
   sameSite: 'lax',
-  // secure: true, // enable this once you serve over HTTPS in production
+  secure: true,
   maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
 };
 
