@@ -96,25 +96,32 @@ router.get('/categories/:cid/matches', asyncHandler(async (req, res) => {
   res.json({ matches: result.rows });
 }));
 
-// PUT /api/matches/:id  { score1, score2 }
-router.put('/matches/:id', asyncHandler(async (req, res) => {
-  const match = await getOwnedMatch(req.params.id, req.user.id);
-  if (!match) return res.status(404).json({ error: 'Match not found' });
+// PUT /api/matches/:id  { score1, score2 } - either field can be sent alone.
+   router.put('/matches/:id', asyncHandler(async (req, res) => {
+     const match = await getOwnedMatch(req.params.id, req.user.id);
+     if (!match) return res.status(404).json({ error: 'Match not found' });
 
-  const { score1, score2 } = req.body || {};
-  const s1 = score1 === '' || score1 === null || score1 === undefined ? null : parseInt(score1, 10);
-  const s2 = score2 === '' || score2 === null || score2 === undefined ? null : parseInt(score2, 10);
+     const body = req.body || {};
 
-  if ((s1 !== null && isNaN(s1)) || (s2 !== null && isNaN(s2))) {
-    return res.status(400).json({ error: 'Scores must be numbers' });
-  }
+     // This is a partial update: the frontend saves each score box the
+     // moment you tab out of it, one field at a time, so only touch a
+     // field here if the request actually included it. Otherwise scoring
+     // one side of a match would wipe out a score already saved on the
+     // other side.
+     const parseScore = (raw) => (raw === '' || raw === null || raw === undefined ? null : parseInt(raw, 10));
+     const s1 = Object.prototype.hasOwnProperty.call(body, 'score1') ? parseScore(body.score1) : match.score1;
+     const s2 = Object.prototype.hasOwnProperty.call(body, 'score2') ? parseScore(body.score2) : match.score2;
 
-  const result = await db.query(
-    'UPDATE matches SET score1 = $1, score2 = $2 WHERE id = $3 RETURNING *',
-    [s1, s2, match.id]
-  );
-  res.json({ match: result.rows[0] });
-}));
+     if ((s1 !== null && isNaN(s1)) || (s2 !== null && isNaN(s2))) {
+       return res.status(400).json({ error: 'Scores must be numbers' });
+     }
+
+     const result = await db.query(
+       'UPDATE matches SET score1 = $1, score2 = $2 WHERE id = $3 RETURNING *',
+       [s1, s2, match.id]
+     );
+     res.json({ match: result.rows[0] });
+   }));
 
 // GET /api/categories/:cid/leaderboard
 router.get('/categories/:cid/leaderboard', asyncHandler(async (req, res) => {
