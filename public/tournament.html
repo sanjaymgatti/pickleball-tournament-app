@@ -27,6 +27,8 @@
       <option value="singles">Singles — round robin, one player per side</option>
       <option value="doubles">Doubles — fixed teams, round robin between teams</option>
       <option value="mixnmatch">MixNMatch — partners rotate every match</option>
+      <option value="singles_group">Singles Group Based — groups + knockout bracket</option>
+      <option value="doubles_group">Doubles Group Based — groups + knockout bracket</option>
     </select>
     <button class="full" onclick="createCategory()">Add category</button>
   </div>
@@ -42,7 +44,13 @@
 const tournamentId = qs('id');
 const errEl = document.getElementById('error');
 
-const TYPE_LABEL = { singles: 'Singles', doubles: 'Doubles', mixnmatch: 'MixNMatch' };
+const TYPE_LABEL = {
+  singles: 'Singles',
+  doubles: 'Doubles',
+  mixnmatch: 'MixNMatch',
+  singles_group: 'Singles Group',
+  doubles_group: 'Doubles Group'
+};
 
 async function init() {
   const user = await requireLogin();
