@@ -121,6 +121,8 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 }
 .tag.doubles { background: #1e3a8a; color: #dbeafe; }
 .tag.mixnmatch { background: #7c2d12; color: #fed7aa; }
+.tag.singles_group { background: #581c87; color: #f3e8ff; }
+.tag.doubles_group { background: #831843; color: #fce7f3; }
 
 table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.9rem; }
 th, td { padding: 10px 6px; text-align: center; border-bottom: 1px solid var(--border); }
@@ -176,3 +178,46 @@ th { color: var(--muted); font-weight: 600; }
 .tab-btn.active { background-color: var(--accent); color: #04160b; border-color: var(--accent); }
 
 .hidden { display: none !important; }
+
+.inline-select {
+  width: auto !important;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+  min-width: 110px;
+}
+
+.list-item .row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.group-card {
+  background-color: var(--card-bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.group-card h3 { margin: 0 0 10px; font-size: 1rem; }
+
+.champion-banner {
+  background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+  color: #04160b;
+  font-weight: 800;
+  font-size: 1.1rem;
+  text-align: center;
+  padding: 16px;
+  border-radius: 12px;
+  margin-top: 14px;
+}
+
+.round-header {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 16px 0 6px;
+}
+.round-header:first-child { margin-top: 0; }
