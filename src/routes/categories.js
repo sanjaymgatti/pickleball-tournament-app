@@ -43,8 +43,8 @@ router.post('/tournaments/:tid/categories', asyncHandler(async (req, res) => {
 
   const { name, type } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'Category name is required' });
-  if (!['singles', 'doubles', 'mixnmatch'].includes(type)) {
-    return res.status(400).json({ error: 'type must be one of: singles, doubles, mixnmatch' });
+  if (!['singles', 'doubles', 'mixnmatch', 'singles_group', 'doubles_group'].includes(type)) {
+    return res.status(400).json({ error: 'type must be one of: singles, doubles, mixnmatch, singles_group, doubles_group' });
   }
 
   const result = await db.query(
