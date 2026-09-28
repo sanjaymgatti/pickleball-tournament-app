@@ -3,8 +3,9 @@
 A multi-tournament successor to [pickleball-scoretracker](https://github.com/sanjaymgatti/pickleball-scoretracker).
 Where the original ran entirely in one browser tab with no persistence, this
 version is a real multi-user web app: organizers register, create
-tournaments, add categories (Singles / Doubles / MixNMatch), add players,
-generate draws, and record scores — all stored in a database.
+tournaments, add categories (Singles / Doubles / MixNMatch / Singles Group
+Based / Doubles Group Based), add players, generate draws, and record
+scores — all stored in a database.
 
 ## What's the same, what's different
 
@@ -12,7 +13,9 @@ generate draws, and record scores — all stored in a database.
 the original `calculateLeaderboard()` function: wins, losses, points-for,
 points-against, and diff, sorted by wins then diff. Singles and Doubles
 attribute each match to one participant per side; MixNMatch attributes it to
-each of the two individual players on each side — exactly like before.
+each of the two individual players on each side — exactly like before. The
+two new Group Based category types use this exact same math for group
+standings.
 
 **MixNMatch's schedule generator is improved.** The original app generated a
 match for *every* combination of 4 players once you went past 4 players
@@ -22,6 +25,33 @@ than 4, the app now uses a practical rotation: each round splits players
 into courts of 4 (sitting out whoever has sat out least so far) and picks
 whichever partner pairing has been used least. You can control how many
 rounds to generate from the category page.
+
+## Group Based categories (Singles Group Based / Doubles Group Based)
+
+These run a group stage followed by a seeded knockout bracket:
+
+1. **Create groups.** On the category page, create however many groups you
+   want (2, 3, 4, or more) - they're named "Group 1", "Group 2", etc.
+2. **Assign players (or, for Doubles Group Based, fixed teams) to groups
+   manually** using the dropdown next to each name - there's no automatic/
+   random assignment, you place people exactly where you want them.
+3. **Generate group-stage draws.** Each group runs its own independent round
+   robin (the same round-robin logic used by plain Singles/Doubles), and
+   each group gets its own standings table.
+4. **Generate the knockout bracket**, choosing how many qualifiers advance
+   from each group (top 1, top 2, etc.). The bracket is seeded so group-mates
+   avoid meeting each other for as long as possible. For the common case of
+   2 groups with the top 2 advancing, this produces exactly: Group 1 Position
+   1 vs Group 2 Position 2, and Group 2 Position 1 vs Group 1 Position 2 -
+   the same cross-seeding used in most club tournaments. This generalizes
+   cleanly to more groups; see the comments above `buildKnockoutSeeds()` in
+   `src/utils/scheduler.js` for the exact algorithm.
+5. **Score each round; click "Generate next round"** once every match in the
+   current round has a winner. If the qualifier count isn't a clean power of
+   2 (e.g. 3 groups with 1 qualifier each = 3 people), the strongest seeds
+   get an automatic bye to the next round rather than playing a first-round
+   match, which is standard tournament practice.
+6. Once the final is scored, a 🏆 Champion banner appears.
 
 ## Stack
 
@@ -39,25 +69,42 @@ rounds to generate from the category page.
 
 ## One-time setup: create the Supabase project and tables
 
+**Already have this app running with a live Supabase database?** Skip to
+"Updating an existing database" below instead of redoing this from scratch -
+running `schema.sql` again won't add the new tables/columns to a database
+that already exists.
+
 1. Go to [supabase.com](https://supabase.com), sign up (GitHub login is
    fine), and click **New project**. Pick any name/region and set a
    database password — save that password, you'll need it in a minute.
 2. Once the project finishes provisioning, open **SQL Editor** in the left
    sidebar, click **New query**, paste in the entire contents of
    [`supabase/schema.sql`](./supabase/schema.sql) from this repo, and click
-   **Run**. This creates all six tables (`users`, `tournaments`,
-   `categories`, `players`, `teams`, `matches`) plus their indexes.
+   **Run**. This creates all seven tables (`users`, `tournaments`,
+   `categories`, `groups`, `players`, `teams`, `matches`) plus their indexes.
 3. Confirm it worked: open **Table Editor** in the sidebar — you should see
-   all six tables listed.
+   all seven tables listed.
 4. Get your connection string: **Project Settings → Database →
    Connection string**, choose the **URI** tab, and copy it. It looks like:
    ```
    postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxxxx.supabase.co:5432/postgres
    ```
-   Replace `[YOUR-PASSWORD]` with the database password from step 1.
+   Replace `[YOUR-PASSWORD]` with the database password from step 1. If
+   you're deploying to Vercel, use the pooler connection string instead -
+   see `.env.example` for both formats and which to use where.
 
-That's the entire database setup — no migrations to run, no ORM to
-configure.
+That's the entire database setup for a brand new project.
+
+### Updating an existing database
+
+If you already ran the original `schema.sql` and have real
+tournaments/players/matches in Supabase, run
+[`supabase/migration_001_group_categories.sql`](./supabase/migration_001_group_categories.sql)
+instead (same steps: SQL Editor → New query → paste → Run). It only adds the
+new `groups` table and a few new columns needed for Singles/Doubles Group
+Based categories - it doesn't touch, delete, or reset any existing data, and
+your existing Singles/Doubles/MixNMatch categories keep working exactly as
+before.
 
 ## Running it locally
 
@@ -85,10 +132,16 @@ Summary:
 users            organizer accounts
 tournaments      belongs to a user
 categories       belongs to a tournament; type = singles | doubles | mixnmatch
-players          belongs to a category
-teams            belongs to a category (doubles only) — pairs two players into a fixed team
+                 | singles_group | doubles_group
+groups           belongs to a category (group-based types only); organizer-
+                 created, e.g. "Group 1", "Group 2"
+players          belongs to a category; optionally belongs to a group
+teams            belongs to a category (doubles / doubles_group) — pairs two
+                 players into a fixed team; optionally belongs to a group
 matches          belongs to a category; stores each side's participants
-                 (as jsonb), labels, and scores
+                 (as jsonb), labels, and scores. Also tracks stage (group vs
+                 knockout), which group a group-stage match belongs to, and
+                 whether a knockout match is an automatic bye
 ```
 
 ## API overview
@@ -107,13 +160,20 @@ being logged in (the browser handles this automatically via the cookie).
 | GET/POST | `/api/tournaments/:tid/categories` | List / create categories |
 | GET/DELETE | `/api/categories/:id` | One category |
 | GET/POST | `/api/categories/:cid/players` | List / add players |
+| PUT | `/api/players/:id` | Assign/unassign a player's group (`{ group_id }`) |
 | DELETE | `/api/players/:id` | Remove a player |
 | GET/POST | `/api/categories/:cid/teams` | List / create fixed doubles teams |
+| PUT | `/api/teams/:id` | Assign/unassign a team's group (`{ group_id }`) |
 | DELETE | `/api/teams/:id` | Remove a team |
-| POST | `/api/categories/:cid/generate-draws` | Generate the match schedule |
-| GET | `/api/categories/:cid/matches` | List matches |
+| GET/POST | `/api/categories/:cid/groups` | List groups / bulk-create N groups (`{ count }`) |
+| PUT | `/api/groups/:id` | Rename a group |
+| DELETE | `/api/groups/:id` | Remove a group (members become unassigned) |
+| POST | `/api/categories/:cid/generate-draws` | Generate the match schedule (one round robin per group, for group-based types) |
+| GET | `/api/categories/:cid/matches` | List matches (optional `?stage=group\|knockout&group_id=N`) |
 | PUT | `/api/matches/:id` | Record a score |
-| GET | `/api/categories/:cid/leaderboard` | Standings |
+| GET | `/api/categories/:cid/leaderboard` | Standings (optional `?group_id=N` for one group's standings) |
+| POST | `/api/categories/:cid/generate-knockout` | Seed the knockout bracket from group standings (`{ qualifiersPerGroup }`) |
+| POST | `/api/categories/:cid/generate-next-knockout-round` | Advance to the next knockout round once the current one is fully scored |
 | POST | `/api/categories/:cid/reset` | Clear matches (keeps players/teams) |
 
 ## Deploying so it's actually usable by your group — for free
