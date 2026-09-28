@@ -193,4 +193,167 @@ function calculateLeaderboard(matches) {
   return list;
 }
 
-module.exports = { roundRobin, generateMixNMatch, calculateLeaderboard };
+/**
+ * Same math as calculateLeaderboard(), but also keeps each participant's
+ * id alongside their label - needed when a group-stage leaderboard has to
+ * feed into knockout bracket seeding (calculateLeaderboard() itself is
+ * left untouched above since it's a direct port of the original app's
+ * function and other code already depends on its exact shape).
+ */
+function calculateLeaderboardWithIds(matches) {
+  const stats = {};
+
+  const touch = (p) => {
+    if (!stats[p.label]) {
+      stats[p.label] = { id: p.id, name: p.label, wins: 0, losses: 0, pf: 0, pa: 0, diff: 0 };
+    }
+    return stats[p.label];
+  };
+
+  matches.forEach((m) => {
+    if (m.score1 === null || m.score1 === undefined) return;
+    if (m.score2 === null || m.score2 === undefined) return;
+
+    const s1 = m.score1;
+    const s2 = m.score2;
+    const side1 = JSON.parse(m.side1_json);
+    const side2 = JSON.parse(m.side2_json);
+
+    side1.forEach((p) => {
+      const st = touch(p);
+      st.pf += s1;
+      st.pa += s2;
+      if (s1 > s2) st.wins += 1;
+      else if (s2 > s1) st.losses += 1;
+    });
+
+    side2.forEach((p) => {
+      const st = touch(p);
+      st.pf += s2;
+      st.pa += s1;
+      if (s2 > s1) st.wins += 1;
+      else if (s1 > s2) st.losses += 1;
+    });
+  });
+
+  const list = Object.values(stats);
+  list.forEach((p) => (p.diff = p.pf - p.pa));
+  list.sort((a, b) => {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return b.diff - a.diff;
+  });
+  return list;
+}
+
+/**
+ * Smallest power of 2 that is >= n.
+ */
+function nextPowerOfTwo(n) {
+  let p = 1;
+  while (p < n) p *= 2;
+  return p;
+}
+
+/**
+ * Standard single-elimination seed ordering for a bracket of `size`
+ * (must be a power of 2), e.g. size=4 -> [1,4,2,3], size=8 ->
+ * [1,8,4,5,2,7,3,6]. This is the well-known construction that keeps
+ * seed 1 and seed 2 apart until the final, seeds 1-4 apart until the
+ * semifinal, and so on. Consecutive pairs in the returned array are the
+ * first-round matchups: (order[0] vs order[1]), (order[2] vs order[3]),
+ * etc.
+ */
+function standardBracketOrder(size) {
+  if (size < 1 || (size & (size - 1)) !== 0) {
+    throw new Error('Bracket size must be a power of 2');
+  }
+  let order = [1];
+  while (order.length < size) {
+    const n = order.length * 2;
+    const next = [];
+    order.forEach((seed) => {
+      next.push(seed);
+      next.push(n + 1 - seed);
+    });
+    order = next;
+  }
+  return order;
+}
+
+/**
+ * Builds the seeded qualifier list for a group-stage knockout bracket.
+ *
+ * `groupQualifiers` is an array (one entry per group, in group order) of
+ * arrays of qualifiers for that group in rank order (group winner
+ * first), each qualifier shaped like { id, label }.
+ *
+ * Seeding order: every group's winner (position 1), in group order,
+ * becomes seeds 1..N; every group's runner-up (position 2), in the SAME
+ * group order, becomes seeds N+1..2N; and so on for further qualifying
+ * positions if more than 2 advance per group.
+ *
+ * For the common case of 2 groups with the top 2 advancing, this
+ * produces exactly: seed1=G1P1, seed2=G2P1, seed3=G1P2, seed4=G2P2 -
+ * which the standard bracket pairing (1v4, 2v3) turns into G1P1 vs G2P2
+ * and G2P1 vs G1P2, matching how club tournaments normally cross-seed a
+ * 2-group draw. It generalizes the same way to more groups.
+ */
+function buildKnockoutSeeds(groupQualifiers) {
+  const maxPositions = Math.max(...groupQualifiers.map(g => g.length));
+  const seeds = [];
+  for (let pos = 0; pos < maxPositions; pos++) {
+    groupQualifiers.forEach((group) => {
+      if (group[pos]) seeds.push(group[pos]);
+    });
+  }
+  return seeds; // seeds[0] is seed #1, seeds[1] is seed #2, ...
+}
+
+/**
+ * Builds the first knockout round from a seeded qualifier list. Handles
+ * byes when the qualifier count isn't a power of 2 by giving the
+ * strongest seeds the byes (standard tournament convention) - a bye
+ * match has `side2: null` and `isBye: true`; the caller should record it
+ * as an automatic walkover rather than asking for a score. Every
+ * subsequent round is a plain power of 2, so no further bye handling is
+ * ever needed once the first round is past.
+ */
+function buildFirstKnockoutRound(seeds) {
+  const q = seeds.length;
+  if (q < 2) {
+    throw new Error('Need at least 2 qualifying players/teams to build a knockout bracket.');
+  }
+
+  const bracketSize = nextPowerOfTwo(q);
+  const order = standardBracketOrder(bracketSize); // seed numbers, bracket order
+
+  const matches = [];
+  for (let i = 0; i < order.length; i += 2) {
+    const seedA = order[i];
+    const seedB = order[i + 1];
+    const a = seedA <= q ? seeds[seedA - 1] : null; // beyond q = phantom bye slot
+    const b = seedB <= q ? seeds[seedB - 1] : null;
+
+    if (!a && !b) {
+      // Never expected: byes = bracketSize - q is always < bracketSize / 2.
+      throw new Error('Unexpected double bye while building the knockout bracket.');
+    }
+    if (a && b) {
+      matches.push({ side1: [a], side2: [b], isBye: false });
+    } else {
+      matches.push({ side1: [a || b], side2: null, isBye: true });
+    }
+  }
+  return { matches, bracketSize };
+}
+
+module.exports = {
+  roundRobin,
+  generateMixNMatch,
+  calculateLeaderboard,
+  calculateLeaderboardWithIds,
+  nextPowerOfTwo,
+  standardBracketOrder,
+  buildKnockoutSeeds,
+  buildFirstKnockoutRound
+};
