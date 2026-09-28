@@ -67,7 +67,7 @@ async function loadTournaments() {
       <div class="list-item">
         <div>
           <div class="title"><a href="/tournament.html?id=${t.id}">${escapeHtml(t.name)}</a></div>
-          <div class="meta">${t.start_date ? t.start_date : ''}${t.start_date && t.end_date ? ' → ' : ''}${t.end_date ? t.end_date : ''}</div>
+          <div class="meta">${t.start_date ? String(t.start_date).slice(0, 10) : ''}${t.start_date && t.end_date ? ' → ' : ''}${t.end_date ? String(t.end_date).slice(0, 10) : ''}</div>
         </div>
         <button class="ghost" onclick="deleteTournament(${t.id})">Delete</button>
       </div>

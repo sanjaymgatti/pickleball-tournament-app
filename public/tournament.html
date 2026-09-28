@@ -64,7 +64,7 @@ async function loadTournament() {
   try {
     const { tournament } = await api(`/tournaments/${tournamentId}`);
     document.getElementById('t-name').textContent = tournament.name;
-    const dates = [tournament.start_date, tournament.end_date].filter(Boolean).join(' → ');
+    const dates = [tournament.start_date, tournament.end_date].filter(Boolean).map(d => String(d).slice(0, 10)).join(' → ');
     document.getElementById('t-dates').textContent = dates || tournament.description || '';
   } catch (e) {
     showError(errEl, e.message);
