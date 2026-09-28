@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 const { getOwnedCategory } = require('./categories');
 const { getOwnedPlayer } = require('./players');
+const { getOwnedGroup } = require('./groups');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -34,8 +35,8 @@ router.get('/categories/:cid/teams', asyncHandler(async (req, res) => {
 router.post('/categories/:cid/teams', asyncHandler(async (req, res) => {
   const category = await getOwnedCategory(req.params.cid, req.user.id);
   if (!category) return res.status(404).json({ error: 'Category not found' });
-  if (category.type !== 'doubles') {
-    return res.status(400).json({ error: 'Fixed teams only apply to "doubles" categories' });
+  if (!['doubles', 'doubles_group'].includes(category.type)) {
+    return res.status(400).json({ error: 'Fixed teams only apply to "doubles" or "doubles_group" categories' });
   }
 
   const { player1_id, player2_id, name } = req.body || {};
@@ -54,6 +55,29 @@ router.post('/categories/:cid/teams', asyncHandler(async (req, res) => {
     [category.id, teamName, p1.id, p2.id]
   );
   res.status(201).json({ team: result.rows[0] });
+}));
+
+// PUT /api/teams/:id  { group_id }  - assign to a group, or null to unassign.
+router.put('/teams/:id', asyncHandler(async (req, res) => {
+  const team = await getOwnedTeam(req.params.id, req.user.id);
+  if (!team) return res.status(404).json({ error: 'Team not found' });
+
+  if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'group_id')) {
+    return res.status(400).json({ error: 'group_id is required (use null to unassign)' });
+  }
+  const { group_id } = req.body;
+
+  let groupId = null;
+  if (group_id !== null && group_id !== undefined && group_id !== '') {
+    const group = await getOwnedGroup(group_id, req.user.id);
+    if (!group || group.category_id !== team.category_id) {
+      return res.status(400).json({ error: 'Group not found in this category' });
+    }
+    groupId = group.id;
+  }
+
+  const result = await db.query('UPDATE teams SET group_id = $1 WHERE id = $2 RETURNING *', [groupId, team.id]);
+  res.json({ team: result.rows[0] });
 }));
 
 // DELETE /api/teams/:id

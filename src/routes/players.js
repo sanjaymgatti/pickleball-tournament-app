@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 const { getOwnedCategory } = require('./categories');
+const { getOwnedGroup } = require('./groups');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -55,6 +56,32 @@ router.post('/categories/:cid/players', asyncHandler(async (req, res) => {
   });
 
   res.status(201).json({ players });
+}));
+
+// PUT /api/players/:id  { group_id }  - assign to a group, or null to unassign.
+// Used by "singles_group" categories (and to assign the underlying
+// players of a "doubles_group" team, though teams themselves also carry
+// their own group_id - see PUT /api/teams/:id in teams.js).
+router.put('/players/:id', asyncHandler(async (req, res) => {
+  const player = await getOwnedPlayer(req.params.id, req.user.id);
+  if (!player) return res.status(404).json({ error: 'Player not found' });
+
+  if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'group_id')) {
+    return res.status(400).json({ error: 'group_id is required (use null to unassign)' });
+  }
+  const { group_id } = req.body;
+
+  let groupId = null;
+  if (group_id !== null && group_id !== undefined && group_id !== '') {
+    const group = await getOwnedGroup(group_id, req.user.id);
+    if (!group || group.category_id !== player.category_id) {
+      return res.status(400).json({ error: 'Group not found in this category' });
+    }
+    groupId = group.id;
+  }
+
+  const result = await db.query('UPDATE players SET group_id = $1 WHERE id = $2 RETURNING *', [groupId, player.id]);
+  res.json({ player: result.rows[0] });
 }));
 
 // DELETE /api/players/:id
