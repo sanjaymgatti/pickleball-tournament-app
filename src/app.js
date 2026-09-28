@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const authRoutes = require('./routes/auth');
 const tournamentRoutes = require('./routes/tournaments');
 const { router: categoryRoutes } = require('./routes/categories');
+const { router: groupRoutes } = require('./routes/groups');
 const { router: playerRoutes } = require('./routes/players');
 const { router: teamRoutes } = require('./routes/teams');
 const matchRoutes = require('./routes/matches');
@@ -18,9 +19,10 @@ app.use(cookieParser());
 app.use('/api/auth', authRoutes);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api', categoryRoutes); // /api/tournaments/:tid/categories, /api/categories/:id
+app.use('/api', groupRoutes);    // /api/categories/:cid/groups, /api/groups/:id
 app.use('/api', playerRoutes);   // /api/categories/:cid/players, /api/players/:id
 app.use('/api', teamRoutes);     // /api/categories/:cid/teams, /api/teams/:id
-app.use('/api', matchRoutes);    // /api/categories/:cid/generate-draws, matches, leaderboard
+app.use('/api', matchRoutes);    // /api/categories/:cid/generate-draws, matches, leaderboard, knockout
 
 // Static frontend (public/index.html, dashboard.html, css, js). On Vercel,
 // vercel.json routes every request into this same app, so this still
